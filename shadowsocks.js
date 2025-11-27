@@ -1,32 +1,10 @@
-// 如需要使用环境变量,将120至126行取消注释
-
+// 如需要使用环境变量,将462至468行取消注释
 import { connect } from 'cloudflare:sockets';
 
 let subPath = 'link';     // 节点订阅路径,不修改将使用UUID作为订阅路径
 let proxyIP = '210.61.97.241:81';  // proxyIP 格式：ip、域名、ip:port、域名:port等,没填写port，默认使用443
 let password = '5dc15e15-f285-4a9d-959b-0e4fbdd77b63';  // 节点UUID
-let SSpath = '';          // 路径验证，如果为空则使用UUID作为验证路径
-
-// CF CDN
-let cfip = [ // 格式:优选域名:端口#备注名称、优选IP:端口#备注名称、[ipv6优选]:端口#备注名称、优选域名#备注
-    'mfa.gov.ua#SG', 'saas.sin.fan#JP', 'store.ubi.com#SG','cf.130519.xyz#KR','cf.008500.xyz#HK',
-    'cf.090227.xyz#SG', 'cf.877774.xyz#HK','cdns.doon.eu.org#JP','sub.danfeng.eu.org#TW','cf.zhetengsha.eu.org#HK'
-];  // 在此感谢各位大佬维护的优选域名
-
-const head=`port: 7890
-socks-port: 7891
-allow-lan: true
-mode: Rule
-dns:
-  enable: true
-proxies:
-`
-const mid=`
-proxy-groups:
-  - name: 🚀 节点选择
-    type: select
-    proxies:
-`
+let SSpath = '';          // 路径验证，为空则使用UUID作为验证路径
 const nginxHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -52,6 +30,26 @@ const nginxHtml = `<!DOCTYPE html>
 <p><em>Thank you for using nginx.</em></p>
 </body>
 </html>`
+const head=`port: 7890
+socks-port: 7891
+allow-lan: true
+mode: Rule
+dns:
+  enable: true
+proxies:
+`
+const mid=`
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    proxies:
+`
+
+// CF-CDN
+let cfip = [ // 格式:优选域名:端口#备注名称、优选IP:端口#备注名称、[ipv6优选]:端口#备注名称、优选域名#备注
+    'mfa.gov.ua#SG', 'saas.sin.fan#JP', 'store.ubi.com#SG','cf.130519.xyz#KR','cf.008500.xyz#HK',
+    'cf.090227.xyz#SG', 'cf.877774.xyz#HK','cdns.doon.eu.org#JP','sub.danfeng.eu.org#TW','cf.zhetengsha.eu.org#HK'
+];  // 感谢各位大佬维护的优选域名
 
 function closeSocketQuietly(socket) {
     try {
@@ -93,7 +91,6 @@ function parsePryAddress(serverStr) {
             return null;
         }
     }
-
     if (serverStr.startsWith('http://') || serverStr.startsWith('https://')) {
         try {
             const url = new URL(serverStr);
@@ -108,7 +105,6 @@ function parsePryAddress(serverStr) {
             return null;
         }
     }
-
     if (serverStr.startsWith('[')) {
         const closeBracket = serverStr.indexOf(']');
         if (closeBracket > 0) {
@@ -123,19 +119,15 @@ function parsePryAddress(serverStr) {
             return { type: 'direct', host, port: 443 };
         }
     }
-
     const lastColonIndex = serverStr.lastIndexOf(':');
-
     if (lastColonIndex > 0) {
         const host = serverStr.substring(0, lastColonIndex);
         const portStr = serverStr.substring(lastColonIndex + 1);
         const port = parseInt(portStr, 10);
-
         if (!isNaN(port) && port > 0 && port <= 65535) {
             return { type: 'direct', host, port };
         }
     }
-
     return { type: 'direct', host: serverStr, port: 443 };
 }
 
@@ -144,7 +136,6 @@ function isSpeedTestSite(hostname) {
     if (speedTestDomains.includes(hostname)) {
         return true;
     }
-
     for (const domain of speedTestDomains) {
         if (hostname.endsWith('.' + domain) || hostname === domain) {
             return true;
@@ -152,146 +143,6 @@ function isSpeedTestSite(hostname) {
     }
     return false;
 }
-
-export default {
-    async fetch(request,env) {
-        try {
-            // workers 部署，需要环境变量，把下面5行前面的//去掉，取消注释即可使用对应的环境变量
-            // if (env.PROXYIP || env.proxyip || env.proxyIP) {
-            //     const servers = (env.PROXYIP || env.proxyip || env.proxyIP).split(',').map(s => s.trim());
-            //     proxyIP = servers[0];
-            // }
-            // password = env.PASSWORD || env.password || env.uuid || env.UUID || password;
-            // subPath = env.SUB_PATH || env.subpath || subPath;
-            // SSpath = env.SSPATH || env.sspath || SSpath;
-
-            if (subPath === 'link' || subPath === '') {
-                subPath = password;
-            }
-
-            if (SSpath === '') {
-                SSpath = password;
-            }
-
-            let validPath = `/${SSpath}`;
-            const servers = proxyIP.split(',').map(s => s.trim());
-            proxyIP = servers[0];
-
-            const method = 'none';
-            const url = new URL(request.url);
-            const pathname = url.pathname;
-
-            let pathProxyIP = null;
-            if (pathname.startsWith('/proxyip=')) {
-                try {
-                    pathProxyIP = decodeURIComponent(pathname.substring(9)).trim();
-                } catch (e) {
-                    // 忽略错误
-                }
-
-                if (pathProxyIP && !request.headers.get('Upgrade')) {
-                    proxyIP = pathProxyIP;
-                    return new Response(`set proxyIP to: ${proxyIP}\n\n`, {
-                        headers: {
-                            'Content-Type': 'text/plain; charset=utf-8',
-                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                        },
-                    });
-                }
-            }
-
-            if (request.headers.get('Upgrade') === 'websocket') {
-                if (!pathname.toLowerCase().startsWith(validPath.toLowerCase())) {
-                    return new Response('Unauthorized', { status: 401 });
-                }
-
-                let wsPathProxyIP = null;
-                if (pathname.startsWith('/proxyip=')) {
-                    try {
-                        wsPathProxyIP = decodeURIComponent(pathname.substring(9)).trim();
-                    } catch (e) {
-                        // 忽略错误
-                    }
-                }
-
-                const customProxyIP = wsPathProxyIP || url.searchParams.get('proxyip') || request.headers.get('proxyip');
-                return await handleSSRequest(request, customProxyIP);
-            } else if (request.method === 'GET') {
-                if (url.pathname === '/') {
-                    return getSimplePage(request);
-                }
-
-                if (url.pathname.toLowerCase() === `/${password.toLowerCase()}`) {
-                    return getHomePage(request);
-                }
-                let nodeNames=[];
-                // 订阅路径 /sub/UUID
-                if (url.pathname.toLowerCase() === `/sub/${subPath.toLowerCase()}` || url.pathname.toLowerCase() === `/sub/${subPath.toLowerCase()}/`) {
-                    const currentDomain = url.hostname;
-                    const ssHeader = 's'+'s';
-                    const ssLinks = cfip.map(cdnItem => {
-                        let host, port = 443, nodeName = '';
-                        if (cdnItem.includes('#')) {
-                            const parts = cdnItem.split('#');
-                            cdnItem = parts[0];
-                            nodeName = parts[1];
-                        }
-
-                        if (cdnItem.startsWith('[') && cdnItem.includes(']:')) {
-                            const ipv6End = cdnItem.indexOf(']:');
-                            host = cdnItem.substring(0, ipv6End + 1);
-                            const portStr = cdnItem.substring(ipv6End + 2);
-                            port = parseInt(portStr) || 443;
-                        } else if (cdnItem.includes(':')) {
-                            const parts = cdnItem.split(':');
-                            host = parts[0];
-                            port = parseInt(parts[1]) || 443;
-                        } else {
-                            host = cdnItem;
-                        }
-                        const ssConfig = `${method}:${password}`;
-                        const ssNodeName = nodeName ? `${nodeName}-${ssHeader}` : `${ssHeader}`;
-                        const encodedConfig = btoa(ssConfig);
-                        nodeNames.push("    - "+nodeName+"-"+host)
-                        return `  - name: ${nodeName+"-"+host}
-    server: ${host}
-    port: ${port}
-    type: ss
-    cipher: none
-    password: ${password}
-    plugin: v2ray-plugin
-    plugin-opts:
-      mode: websocket
-      tls: true
-      skip-cert-verify: true
-      host: ${currentDomain}
-      path: /${password}?ed=2560
-      mux: false`
-                    });
-                    const nodeNamesText=nodeNames.join('\n');
-                    const linksText = ssLinks.join('\n\n');
-                    const resp = await fetch('https://xjyzs.github.io/tail.yaml');
-                    const tail = await resp.text();
-                    const finalText=head+linksText+mid+nodeNamesText+'\n'+tail
-                    return new Response(finalText, {
-                        headers: {
-                            'Content-Type': 'text/plain; charset=utf-8',
-                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                            'Content-Disposition': 'attachment; filename="Shadowsocks"',
-                        },
-                    });
-                }
-            }
-            return new Response(nginxHtml, { status: 404,
-                headers: {
-                    'Content-Type': 'text/html;charset=utf-8',
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                }, },);
-        } catch (err) {
-            return new Response('Internal Server Error', { status: 500 });
-        }
-    },
-};
 
 async function handleSSRequest(request, customProxyIP) {
     const wssPair = new WebSocketPair();
@@ -301,7 +152,6 @@ async function handleSSRequest(request, customProxyIP) {
     let isDnsQuery = false;
     const earlyData = request.headers.get('sec-websocket-protocol') || '';
     const readable = makeReadableStr(serverSock, earlyData);
-
     readable.pipeTo(new WritableStream({
         async write(chunk) {
             if (isDnsQuery) return await forwardataudp(chunk, serverSock, null);
@@ -311,19 +161,16 @@ async function handleSSRequest(request, customProxyIP) {
                 writer.releaseLock();
                 return;
             }
-
             const { hasError, message, addressType, port, hostname, rawIndex } = parseSSPacketHeader(chunk);
             if (hasError) throw new Error(message);
 
             if (isSpeedTestSite(hostname)) {
                 throw new Error('Speedtest site is blocked');
             }
-
             if (addressType === 2) {
                 if (port === 53) isDnsQuery = true;
                 else throw new Error('UDP is not supported');
             }
-
             const rawData = chunk.slice(rawIndex);
             if (isDnsQuery) return forwardataudp(rawData, serverSock, null);
             await forwardataTCP(hostname, port, rawData, serverSock, null, remoteConnWrapper, customProxyIP);
@@ -331,18 +178,15 @@ async function handleSSRequest(request, customProxyIP) {
     })).catch((err) => {
         // console.error('Readable pipe error:', err);
     });
-
     return new Response(null, { status: 101, webSocket: clientSock });
 }
 
 function parseSSPacketHeader(chunk) {
     if (chunk.byteLength < 7) return { hasError: true, message: 'Invalid data' };
-
     try {
         const view = new Uint8Array(chunk);
         const addressType = view[0];
         let addrIdx = 1, addrLen = 0, addrValIdx = addrIdx, hostname = '';
-
         switch (addressType) {
             case 1: // IPv4
                 addrLen = 4;
@@ -366,9 +210,7 @@ function parseSSPacketHeader(chunk) {
             default:
                 return { hasError: true, message: `Invalid address type: ${addressType}` };
         }
-
         if (!hostname) return { hasError: true, message: `Invalid address: ${addressType}` };
-
         const port = new DataView(chunk.slice(addrValIdx, addrValIdx + 2)).getUint16(0);
         return { hasError: false, addressType, port, hostname, rawIndex: addrValIdx + 2 };
     } catch (e) {
@@ -381,7 +223,6 @@ async function connect2Socks5(proxyConfig, targetHost, targetPort, initialData) 
     const socket = connect({ hostname: host, port: port });
     const writer = socket.writable.getWriter();
     const reader = socket.readable.getReader();
-
     try {
         const authMethods = username && password ?
             new Uint8Array([0x05, 0x02, 0x00, 0x02]) :
@@ -392,7 +233,6 @@ async function connect2Socks5(proxyConfig, targetHost, targetPort, initialData) 
         if (methodResponse.done || methodResponse.value.byteLength < 2) {
             throw new Error('S5 method selection failed');
         }
-
         const selectedMethod = new Uint8Array(methodResponse.value)[1];
         if (selectedMethod === 0x02) {
             if (!username || !password) {
@@ -414,7 +254,6 @@ async function connect2Socks5(proxyConfig, targetHost, targetPort, initialData) 
         } else if (selectedMethod !== 0x00) {
             throw new Error(`S5 unsupported auth method: ${selectedMethod}`);
         }
-
         const hostBytes = new TextEncoder().encode(targetHost);
         const connectPacket = new Uint8Array(7 + hostBytes.length);
         connectPacket[0] = 0x05;
@@ -429,7 +268,6 @@ async function connect2Socks5(proxyConfig, targetHost, targetPort, initialData) 
         if (connectResponse.done || new Uint8Array(connectResponse.value)[1] !== 0x00) {
             throw new Error('S5 connection failed');
         }
-
         await writer.write(initialData);
         writer.releaseLock();
         reader.releaseLock();
@@ -454,7 +292,6 @@ async function connect2Http(proxyConfig, targetHost, targetPort, initialData) {
             const auth = btoa(`${username}:${password}`);
             connectRequest += `Proxy-Authorization: Basic ${auth}\r\n`;
         }
-
         connectRequest += `User-Agent: Mozilla/5.0\r\n`;
         connectRequest += `Connection: keep-alive\r\n`;
         connectRequest += '\r\n';
@@ -463,7 +300,6 @@ async function connect2Http(proxyConfig, targetHost, targetPort, initialData) {
         let headerEndIndex = -1;
         let bytesRead = 0;
         const maxHeaderSize = 8192;
-
         while (headerEndIndex === -1 && bytesRead < maxHeaderSize) {
             const { done, value } = await reader.read();
             if (done) {
@@ -483,30 +319,22 @@ async function connect2Http(proxyConfig, targetHost, targetPort, initialData) {
                 }
             }
         }
-
         if (headerEndIndex === -1) {
             throw new Error('Invalid HTTP response');
         }
-
         const headerText = new TextDecoder().decode(responseBuffer.slice(0, headerEndIndex));
         const statusLine = headerText.split('\r\n')[0];
         const statusMatch = statusLine.match(/HTTP\/\d\.\d\s+(\d+)/);
-
         if (!statusMatch) {
             throw new Error(`Invalid response: ${statusLine}`);
         }
-
         const statusCode = parseInt(statusMatch[1]);
         if (statusCode < 200 || statusCode >= 300) {
             throw new Error(`Connection failed: ${statusLine}`);
         }
-
-        console.log('HTTP connection established for Shadowsocks');
-
         await writer.write(initialData);
         writer.releaseLock();
         reader.releaseLock();
-
         return socket;
     } catch (error) {
         try {
@@ -530,7 +358,6 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
         writer.releaseLock();
         return remoteSock;
     }
-
     let proxyConfig = null;
     let shouldUseProxy = false;
     if (customProxyIP) {
@@ -546,7 +373,6 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
             shouldUseProxy = true;
         }
     }
-
     async function connecttoPry() {
         let newSocket;
         if (proxyConfig.type === 'socks5') {
@@ -556,12 +382,10 @@ async function forwardataTCP(host, portNum, rawData, ws, respHeader, remoteConnW
         } else {
             newSocket = await connectDirect(proxyConfig.host, proxyConfig.port, rawData);
         }
-
         remoteConnWrapper.socket = newSocket;
         newSocket.closed.catch(() => {}).finally(() => closeSocketQuietly(ws));
         connectStreams(newSocket, ws, respHeader, null);
     }
-
     if (shouldUseProxy) {
         try {
             await connecttoPry();
@@ -610,7 +434,7 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc) {
         new WritableStream({
             async write(chunk, controller) {
                 hasData = true;
-                if (webSocket.readyState !== WebSocket.OPEN) controller.error('ws.readyState is not open');
+                if (webSocket.readyState !== WebSocket.OPEN) controller.error('wsreadyState not open');
                 if (header) {
                     const response = new Uint8Array(header.length + chunk.byteLength);
                     response.set(header, 0);
@@ -658,19 +482,6 @@ async function forwardataudp(udpChunk, webSocket, respHeader) {
     }
 }
 
-function getHomePage(request) {
-    const url = request.headers.get('Host');
-    const baseUrl = `https://${url}`;
-    const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Shadowsocks Service</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#7dd3ca 0%,#a17ec4 100%);height:100vh;display:flex;align-items:center;justify-content:center;color:#333;margin:0;padding:0;overflow:hidden;}.container{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-radius:20px;padding:20px;box-shadow:0 20px 40px rgba(0,0,0,0.1);max-width:800px;width:95%;text-align:center;}.logo{margin-bottom:20px;}.title{font-size:2rem;margin-bottom:10px;color:#2d3748;}.subtitle{color:#718096;margin-bottom:30px;font-size:1.1rem;}.info-card{background:#f7fafc;border-radius:12px;padding:20px;margin:20px 0;text-align:left;border-left:4px solid #6ed8c9;}.info-item{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e2e8f0;}.info-item:last-child{border-bottom:none;}.label{font-weight:600;color:#4a5568;}.value{color:#2d3748;font-family:'Courier New',monospace;background:#edf2f7;padding:4px 8px;border-radius:4px;font-size:0.9rem;}.button-group{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;margin:30px 0;}.btn{padding:12px 24px;background:linear-gradient(135deg,#12cd9e 0%,#a881d0 100%);color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:all 0.3s ease;text-decoration:none;display:inline-block;}.btn:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(0,0,0,0.1);}.footer{margin-top:30px;color:#ef0202;font-size:0.9rem;}@media (max-width:768px){.container{padding:20px;}.button-group{flex-direction:column;align-items:center;}.btn{width:100%;max-width:300px;}}</style></head><body><div class="container"><div class="logo"><img src="https://img.icons8.com/color/96/cloudflare.png" alt="Logo" width="96" height="96"></div><h1 class="title">Cloudflare Shadowsocks Service</h1><p class="subtitle">基于 Cloudflare 的高性能 Shadowsocks 代理服务</p><div class="info-card"><div class="info-item"><span class="label">服务状态</span><span class="value">运行中</span></div><div class="info-item"><span class="label">HOST地址</span><span class="value">${url}</span></div><div class="info-item"><span class="label">UUID</span><span class="value">${subPath}</span></div><div class="info-item"><span class="label">v2rayN/shadowrocket订阅地址</span><span class="value">${baseUrl}/sub/${subPath}</span></div></div><div class="footer"><p>注意：v2rayN导入的节点链接参数不完整,需要手动补全,节点path为：/${SSpath}/?ed=2560</p></div><div class="button-group"><button onclick="copySubscription()" class="btn">复制订阅链接</button><button onclick="showQRCode()" class="btn">显示订阅二维码</button></div><div class="footer"><p style="margin-top: 20px;"><a href="https://github.com/eooce/Cloudflare-proxy" target="_blank" style="color: #718096; text-decoration: none; margin: 0 10px;">GitHub项目</a><a href="https://check-proxyip.ssss.nyc.mn" target="_blank" style="color: #718096; text-decoration: none; margin: 0 10px;">Proxyip检测</a><a href="https://t.me/eooceu" target="_blank" style="color: #718096; text-decoration: none; margin: 0 10px;">Telegram交流群</a></p></div></div><div id="qrModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5);z-index:1000;"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:10px;text-align:center;"><h2>Shadowrocket订阅二维码</h2><img id="qrCodeImage" src="" alt="QR Code" style="max-width:300px;height:auto;padding:10px;"><p style="word-break:break-all;"><a id="qrCodeLink" href="" target="_blank"></a></p><button onclick="closeQRModal()" style="margin-top:20px;padding:10px 20px;background:#12cd9e;color:white;border:none;border-radius:5px;cursor:pointer;">关闭</button></div></div><script>function copySubscription(){const configUrl='${baseUrl}/sub/${subPath}';navigator.clipboard.writeText(configUrl).then(()=>{alert('订阅链接已复制到剪贴板!');}).catch(()=>{const textArea=document.createElement('textarea');textArea.value=configUrl;document.body.appendChild(textArea);textArea.select();document.execCommand('copy');document.body.removeChild(textArea);alert('订阅链接已复制到剪贴板!');});}function showQRCode(){const configUrl='${baseUrl}/sub/${subPath}';document.getElementById('qrCodeImage').src='';document.getElementById('qrCodeLink').href='';document.getElementById('qrCodeLink').textContent='二维码生成中...';document.getElementById('qrModal').style.display='block';const qrUrl='https://tool.oschina.net/action/qrcode/generate?data='+encodeURIComponent(configUrl)+'&output=image%2Fpng&error=L&type=0&margin=4&size=4';fetch(qrUrl).then(response=>response.blob()).then(blob=>{const imageUrl=URL.createObjectURL(blob);document.getElementById('qrCodeImage').src=imageUrl;document.getElementById('qrCodeLink').href=configUrl;document.getElementById('qrCodeLink').textContent=configUrl;}).catch(()=>{document.getElementById('qrCodeImage').src=qrUrl;document.getElementById('qrCodeLink').href=configUrl;document.getElementById('qrCodeLink').textContent=configUrl;});}function closeQRModal(){document.getElementById('qrModal').style.display='none';}</script></body></html>`;
-    return new Response(html, {
-        status: 200,
-        headers: {
-            'Content-Type': 'text/html;charset=utf-8',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-        },
-    });
-}
-
 function getSimplePage(request) {
     const url = request.headers.get('Host');
     const baseUrl = `https://${url}`;
@@ -682,3 +493,141 @@ function getSimplePage(request) {
         },
     });
 }
+
+export default {
+    async fetch(request,env) {
+        try {
+            // if (env.PROXYIP || env.proxyip || env.proxyIP) {
+            //     const servers = (env.PROXYIP || env.proxyip || env.proxyIP).split(',').map(s => s.trim());
+            //     //proxyIP = servers[0];
+            // }
+            // password = env.PASSWORD || env.password || env.uuid || env.UUID || password;
+            // subPath = env.SUB_PATH || env.subpath || subPath;
+            // SSpath = env.SSPATH || env.sspath || SSpath;
+            if (subPath === 'link' || subPath === '') { subPath = password; }
+            if (SSpath === '') { SSpath = password; }
+            let validPath = `/${SSpath}`;
+            const servers = proxyIP.split(',').map(s => s.trim());
+            proxyIP = servers[0];
+            const method = 'none';
+            const url = new URL(request.url);
+            const pathname = url.pathname;
+            let pathProxyIP = null;
+            if (pathname.startsWith('/proxyip=')) {
+                try {
+                    pathProxyIP = decodeURIComponent(pathname.substring(9)).trim();
+                } catch (e) {
+                    // ingore error
+                }
+                if (pathProxyIP && !request.headers.get('Upgrade')) {
+                    proxyIP = pathProxyIP;
+                    return new Response(`set proxyIP to: ${proxyIP}\n\n`, {
+                        headers: {
+                            'Content-Type': 'text/plain; charset=utf-8',
+                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                        },
+                    });
+                }
+            }
+
+            if (request.headers.get('Upgrade') === 'websocket') {
+                if (!pathname.toLowerCase().startsWith(validPath.toLowerCase())) {
+                    return new Response('Unauthorized', { status: 401 });
+                }
+                let wsPathProxyIP = null;
+                if (pathname.startsWith('/proxyip=')) {
+                    try {
+                        wsPathProxyIP = decodeURIComponent(pathname.substring(9)).trim();
+                    } catch (e) {
+                        // ingore error
+                    }
+                }
+                const customProxyIP = wsPathProxyIP || url.searchParams.get('proxyip') || request.headers.get('proxyip');
+                return await handleSSRequest(request, customProxyIP);
+            } else if (request.method === 'GET') {
+                if (url.pathname === '/') {
+                    return getSimplePage(request);
+                }
+                if (url.pathname.toLowerCase() === `/${password.toLowerCase()}`) {
+                    const sheader = 's' + 's';
+                    const typelink = 'c'+ 'l'+ 'a'+ 's'+ 'h';
+                    const currentDomain = url.hostname;
+                    const baseUrl = `https://${currentDomain}`;
+                    const vUrl = `${baseUrl}/sub/${subPath}`;
+                    const qxConfig = `shadowsocks=mfa.gov.ua:443,method=none,password=${password},obfs=wss,obfs-host=${currentDomain},obfs-uri=/${SSpath}/?ed=2560,fast-open=true, udp-relay=true,tag=SS`;
+                    const claLink = `https://sub.ssss.xx.kg/${typelink}?config=${vUrl}`;
+                    const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Shadowsocks 订阅中心</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;background:linear-gradient(135deg,#7dd3ca 0%,#a17ec4 100%);color:#333}.container{height:1080px;max-width:800px;margin:0 auto}.header{margin-bottom:30px}.header h1{text-align:center;color:#007fff;border-bottom:2px solid #3498db;padding-bottom:10px}.section{margin-bottom:0px}.section h2{color:#b33ce7;margin-bottom:5px;font-size:1.1em}.link-box{background:#f0fffa;border:1px solid #ddd;border-radius:8px;padding:15px;margin-bottom:15px;display:flex;justify-content:space-between;align-items:flex-start}.lintext{flex:1;word-break:break-all;font-family:monospace;color:#2980b9;margin:10px;}.clesh-config{flex:1;word-break:break-all;font-family:monospace;color:#2980b9;margin:10px;white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;border:1px solid #e9ecef}.button-group{display:flex;gap:10px;flex-shrink:0}.copy-btn{background:#27aea2;color:white;border:none;padding:8px 15px;border-radius:4px;cursor:pointer;transition:all 0.3s ease}.copy-btn:hover{background:#219652}.copy-btn.copied{background:#0e981d}.qrcode-btn{background:#e67e22;color:white;border:none;padding:8px 15px;border-radius:4px;cursor:pointer}.qrcode-btn:hover{background:#d35400}.footer{text-align:center;color:#7f8c8d;border-top:1px solid #e1d9fb;}.footer a{color:#c311ffs;text-decoration:none;margin:0 15px}.footer a:hover{text-decoration:underline}#qrModal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000}.modal-content{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;text-align:center;max-width:90%}.modal-content h3{margin-bottom:15px;color:#2c3e50}.modal-content img{max-width:300px;height:auto;margin:10px 0}.close-btn{background:#e74c3c;color:white;border:none;padding:8px 15px;border-radius:4px;cursor:pointer;margin-top:15px}.close-btn:hover{background:#c0392b}@media (max-width:600px){.link-box{flex-direction:column}.button-group{margin-top:10px;align-self:flex-end}}</style></head><body><div class="container"><div class="header"><h1>Shadowsocks 订阅中心</h1></div><div class="section"><h2>V2rayN(7.16.4)/Nekobox/小火箭/v2rayng(安卓1.8.25)/kraing(1.2.8.1100以上) 订阅链接</h2><div class="link-box"><div class="lintext">${vUrl}</div><div class="button-group"><button class="copy-btn" onclick="copyToClipboard(this,'${vUrl}')">复制</button><button class="qrcode-btn" onclick="showQRCode('${vUrl}','V2rayN(7.16.4)/nekobox/小火箭/V2rayng(安卓1.8.25) 订阅链接')">二维码</button></div></div></div><div class="section"><h2>${typelink}订阅链接</h2><div class="link-box"><div class="lintext">${claLink}</div><div class="button-group"><button class="copy-btn" onclick="copyToClipboard(this,'${claLink}')">复制</button><button class="qrcode-btn" onclick="showQRCode('${claLink}','${typelink} 订阅链接')">二维码</button></div></div></div><div class="section"><h2>Quantumult X节点配置</h2><div class="link-box"><div class="lintext">${qxConfig}</div><div class="button-group"><button class="copy-btn" onclick="copyToClipboard(this,'${qxConfig}')">复制</button></div></div></div><div class="section"><h2>客户端下载链接</h2><div class="link-box"><div class="lintext">v2rayN (Windows): <a href="https://github.com/2dust/v2rayN/releases/tag/7.16.4" target="_blank">7.16.4版本下载</a><br>v2rayNG (Android): <a href="https://github.com/2dust/v2rayNG/releases/tag/1.8.25" target="_blank">1.8.25版本下载</a><br>Karing (测试版): <a href="https://github.com/KaringX/karing/releases/tag/v1.2.8.1101" target="_blank">1.2.8.1101版本下载</a></div></div></div><div class="footer"><p><a href="https://github.com/eooce/CF-workers-and-snip-VLESS" target="_blank">GitHub</a> | <a href="https://check-proxyip.ssss.nyc.mn" target="_blank">Proxyip检测</a> | <a href="https://t.me/+vtZ8GLzjksA4OTVl" target="_blank">TG交流群</a></p></div></div><div id="qrModal"><div class="modal-content"><h3 id="modalTitle">二维码</h3><img id="qrImage" src="" alt="QR Code"><p id="qrText" style="word-break:break-all;margin:10px 0"></p><button class="close-btn" onclick="closeQRModal()">关闭</button></div></div><script>function copyToClipboard(button,text){const originalText=button.textContent;const decodedText=text.replace(/\\\\n/g,'\\n').replace(/&quot;/g,'"');navigator.clipboard.writeText(decodedText).then(()=>{button.textContent='已复制';button.classList.add('copied');setTimeout(()=>{button.textContent=originalText;button.classList.remove('copied')},2000)}).catch(()=>{const e=document.createElement('textarea');e.value=decodedText;document.body.appendChild(e);e.select();document.execCommand('copy');document.body.removeChild(e);button.textContent='已复制';button.classList.add('copied');setTimeout(()=>{button.textContent=originalText;button.classList.remove('copied')},2000)})}function showQRCode(text,title){document.getElementById('modalTitle').textContent=title;document.getElementById('qrText').textContent=text;const e='https://tool.oschina.net/action/qrcode/generate?data='+encodeURIComponent(text)+'&output=image%2Fpng&error=L&type=0&margin=4&size=4';fetch(e).then(t=>t.blob()).then(t=>{const n=URL.createObjectURL(t);document.getElementById('qrImage').src=n}).catch(()=>{document.getElementById('qrImage').src=e});document.getElementById('qrModal').style.display='block'}function closeQRModal(){document.getElementById('qrModal').style.display='none'}document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.copy-btn[data-config]').forEach(btn=>{btn.addEventListener('click',function(){copyToClipboard(this,this.getAttribute('data-config'))})})});</script></body></html>`;
+                    return new Response(html, {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'text/html;charset=utf-8',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        },
+                    });
+                }
+                let nodeNames=[];
+                // sub path /sub/UUID
+                if (url.pathname.toLowerCase() === `/sub/${subPath.toLowerCase()}` || url.pathname.toLowerCase() === `/sub/${subPath.toLowerCase()}/`) {
+                    const currentDomain = url.hostname;
+                    const ssHeader = 's'+'s';
+                    const ssLinks = cfip.map(cdnItem => {
+                        let host, port = 443, nodeName = '';
+                        if (cdnItem.includes('#')) {
+                            const parts = cdnItem.split('#');
+                            cdnItem = parts[0];
+                            nodeName = parts[1];
+                        }
+                        if (cdnItem.startsWith('[') && cdnItem.includes(']:')) {
+                            const ipv6End = cdnItem.indexOf(']:');
+                            host = cdnItem.substring(0, ipv6End + 1);
+                            const portStr = cdnItem.substring(ipv6End + 2);
+                            port = parseInt(portStr) || 443;
+                        } else if (cdnItem.includes(':')) {
+                            const parts = cdnItem.split(':');
+                            host = parts[0];
+                            port = parseInt(parts[1]) || 443;
+                        } else {
+                            host = cdnItem;
+                        }
+                        nodeNames.push("    - "+nodeName+"-"+host)
+                        return `  - name: ${nodeName+"-"+host}
+    server: ${host}
+    port: ${port}
+    type: ss
+    cipher: none
+    password: ${password}
+    plugin: v2ray-plugin
+    plugin-opts:
+      mode: websocket
+      tls: true
+      skip-cert-verify: true
+      host: ${currentDomain}
+      path: /${password}?ed=2560
+      mux: false`
+                    });
+                    const nodeNamesText=nodeNames.join('\n');
+                    const linksText = ssLinks.join('\n\n');
+                    const resp = await fetch('https://xjyzs.github.io/tail.yaml');
+                    const tail = await resp.text();
+                    const finalText=head+linksText+mid+nodeNamesText+'\n'+tail
+                    return new Response(finalText, {
+                        headers: {
+                            'Content-Type': 'text/plain; charset=utf-8',
+                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                            'Content-Disposition': 'attachment; filename="Shadowsocks"',
+                        },
+                    });
+                }
+            }
+            return new Response(nginxHtml,{
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/html;charset=utf-8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                },
+            });
+        } catch (err) {
+            return new Response('Internal Server Error', { status: 500 });
+        }
+    },
+};
